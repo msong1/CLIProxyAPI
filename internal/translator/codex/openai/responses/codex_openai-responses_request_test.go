@@ -365,7 +365,7 @@ func TestTruncationRemovedForCodexCompatibility(t *testing.T) {
 	}
 }
 
-func TestConvertOpenAIResponsesRequestToCodex_PreservesStatefulChaining(t *testing.T) {
+func TestConvertOpenAIResponsesRequestToCodex_PreservesPreviousResponseID(t *testing.T) {
 	inputJSON := []byte(`{
 		"model": "gpt-5.4",
 		"previous_response_id": "resp_123",
@@ -377,15 +377,15 @@ func TestConvertOpenAIResponsesRequestToCodex_PreservesStatefulChaining(t *testi
 	if got := gjson.GetBytes(output, "previous_response_id").String(); got != "resp_123" {
 		t.Fatalf("previous_response_id = %q, want %q", got, "resp_123")
 	}
-	if !gjson.GetBytes(output, "store").Bool() {
-		t.Fatalf("store = %v, want true for previous_response_id chaining: %s", gjson.GetBytes(output, "store").Bool(), string(output))
+	if gjson.GetBytes(output, "store").Bool() {
+		t.Fatalf("store = %v, want false for Codex compatibility: %s", gjson.GetBytes(output, "store").Bool(), string(output))
 	}
-	if gjson.GetBytes(output, "include").Exists() {
-		t.Fatalf("include should not be injected for stateful chaining requests: %s", string(output))
+	if !gjson.GetBytes(output, "include").Exists() {
+		t.Fatalf("include should remain injected for Codex compatibility: %s", string(output))
 	}
 }
 
-func TestConvertOpenAIResponsesRequestToCodex_PreservesExplicitStatefulStore(t *testing.T) {
+func TestConvertOpenAIResponsesRequestToCodex_ForcesStoreFalse(t *testing.T) {
 	inputJSON := []byte(`{
 		"model": "gpt-5.4",
 		"store": true,
@@ -394,10 +394,10 @@ func TestConvertOpenAIResponsesRequestToCodex_PreservesExplicitStatefulStore(t *
 
 	output := ConvertOpenAIResponsesRequestToCodex("gpt-5.4", inputJSON, false)
 
-	if !gjson.GetBytes(output, "store").Bool() {
-		t.Fatalf("store = %v, want explicit true to be preserved: %s", gjson.GetBytes(output, "store").Bool(), string(output))
+	if gjson.GetBytes(output, "store").Bool() {
+		t.Fatalf("store = %v, want false for Codex compatibility: %s", gjson.GetBytes(output, "store").Bool(), string(output))
 	}
-	if gjson.GetBytes(output, "include").Exists() {
-		t.Fatalf("include should not be injected when store=true: %s", string(output))
+	if !gjson.GetBytes(output, "include").Exists() {
+		t.Fatalf("include should be injected when store is forced false: %s", string(output))
 	}
 }

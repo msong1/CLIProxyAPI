@@ -2,7 +2,6 @@ package responses
 
 import (
 	"fmt"
-	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
@@ -19,8 +18,9 @@ func ConvertOpenAIResponsesRequestToCodex(modelName string, inputRawJSON []byte,
 	}
 
 	rawJSON, _ = sjson.SetBytes(rawJSON, "stream", true)
+	rawJSON, _ = sjson.SetBytes(rawJSON, "store", false)
 	rawJSON, _ = sjson.SetBytes(rawJSON, "parallel_tool_calls", true)
-	rawJSON = applyResponsesStatefulnessCompatibility(rawJSON)
+	rawJSON, _ = sjson.SetBytes(rawJSON, "include", []string{"reasoning.encrypted_content"})
 	// Codex Responses rejects token limit fields, so strip them out before forwarding.
 	rawJSON, _ = sjson.DeleteBytes(rawJSON, "max_output_tokens")
 	rawJSON, _ = sjson.DeleteBytes(rawJSON, "max_completion_tokens")
@@ -41,30 +41,6 @@ func ConvertOpenAIResponsesRequestToCodex(modelName string, inputRawJSON []byte,
 	// Convert role "system" to "developer" in input array to comply with Codex API requirements.
 	rawJSON = convertSystemRoleToDeveloper(rawJSON)
 	rawJSON = normalizeCodexBuiltinTools(rawJSON)
-
-	return rawJSON
-}
-
-// applyResponsesStatefulnessCompatibility keeps the prior stateless default for
-// ordinary proxied Codex turns, while allowing official Responses chaining via
-// previous_response_id to remain stateful as documented by OpenAI.
-func applyResponsesStatefulnessCompatibility(rawJSON []byte) []byte {
-	hasPreviousResponseID := strings.TrimSpace(gjson.GetBytes(rawJSON, "previous_response_id").String()) != ""
-	storeResult := gjson.GetBytes(rawJSON, "store")
-
-	switch {
-	case hasPreviousResponseID:
-		// OpenAI's Responses chaining flow relies on persisted state. When a
-		// client references a previous response, preserve that contract instead
-		// of forcing the proxy's older stateless default.
-		rawJSON, _ = sjson.SetBytes(rawJSON, "store", true)
-	case !storeResult.Exists():
-		rawJSON, _ = sjson.SetBytes(rawJSON, "store", false)
-	}
-
-	if !gjson.GetBytes(rawJSON, "include").Exists() && !gjson.GetBytes(rawJSON, "store").Bool() {
-		rawJSON, _ = sjson.SetBytes(rawJSON, "include", []string{"reasoning.encrypted_content"})
-	}
 
 	return rawJSON
 }
